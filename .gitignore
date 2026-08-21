@@ -1,0 +1,16 @@
+# Artifacts
+*.zip
+*.pyc
+__pycache__/
+.ipynb_checkpoints/
+
+# Environment
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
