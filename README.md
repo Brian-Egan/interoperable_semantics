@@ -12,7 +12,7 @@ Bidirectional semantic model interoperability between Snowflake Semantic Views a
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    S3: snowflake-ossie-interop                       │
+│                    S3: <your-bucket>                                │
 │                                                                     │
 │   ossie/                          iceberg/                          │
 │   ├── ossie_from_snowflake.yaml   ├── customers/ (Parquet + meta)   │
@@ -45,7 +45,7 @@ Bidirectional semantic model interoperability between Snowflake Semantic Views a
 | Customers table | `CUSTOMERS` (Iceberg) | Read from S3 Iceberg metadata |
 | Orders table | `ORDERS` (Iceberg) | Read from S3 Iceberg metadata |
 | Semantic model | `SALES_SV` (Semantic View) | `sales_metric_view` (Metric View) |
-| S3 bucket | `s3://snowflake-ossie-interop/` | Same |
+| S3 bucket | `s3://<your-bucket>/` | Same |
 
 ## Demo Data
 
@@ -104,7 +104,6 @@ These are **suspended by default**. Enable them during a live demo to show real-
 ```
 interoperable_semantics/
 ├── README.md                 (this file)
-├── HANDOFF.md                (detailed technical context from prior session)
 ├── setup/
 │   ├── SETUP.md              (full setup guide for new environments)
 │   ├── snowflake_setup.sql   (creates all Snowflake objects)
