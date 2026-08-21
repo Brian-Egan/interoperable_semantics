@@ -56,14 +56,22 @@ Bidirectional semantic model interoperability between Snowflake Semantic Views a
 | EAST   | 750               | 5           | 12             |
 | WEST   | 700               | 5           | 11             |
 
-## Quick Start
+## Setup (New Environment)
+
+For a fresh setup on a new Snowflake/AWS/Databricks account, see
+[`setup/SETUP.md`](setup/SETUP.md). It walks through creating the S3 bucket,
+IAM roles, Snowflake objects, and Databricks configuration from scratch.
+
+The Snowflake setup script is at [`setup/snowflake_setup.sql`](setup/snowflake_setup.sql).
+Teardown is at [`setup/teardown.sql`](setup/teardown.sql).
+
+## Quick Start (After Setup)
 
 ### 1. Infrastructure (run once)
 
 The Snowflake notebook `01_snowflake_setup_and_export.ipynb` creates:
-- Storage integration + external stage (for Ossie YAML)
-- External volume + Iceberg tables (for shared data)
-- Semantic View + initial Ossie export to S3
+- Semantic View over the pre-existing Iceberg tables
+- Initial Ossie export to S3
 - A suspended sync task (enable during demo)
 
 ### 2. Databricks Conversion
@@ -97,6 +105,10 @@ These are **suspended by default**. Enable them during a live demo to show real-
 interoperable_semantics/
 ├── README.md                 (this file)
 ├── HANDOFF.md                (detailed technical context from prior session)
+├── setup/
+│   ├── SETUP.md              (full setup guide for new environments)
+│   ├── snowflake_setup.sql   (creates all Snowflake objects)
+│   └── teardown.sql          (removes all Snowflake objects)
 ├── client_facing/
 │   ├── 01_snowflake_setup_and_export.ipynb
 │   ├── 02_databricks_ossie_to_metric_view.ipynb
@@ -105,7 +117,6 @@ interoperable_semantics/
 │   ├── data/                  (source CSVs for reference)
 │   │   ├── customers.csv
 │   │   └── orders.csv
-│   ├── teardown.sql
 │   └── README.md             (original client walkthrough)
 └── .gitignore
 ```
