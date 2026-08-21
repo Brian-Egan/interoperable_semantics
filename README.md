@@ -69,14 +69,14 @@ Teardown is at [`setup/teardown.sql`](setup/teardown.sql).
 
 ### 1. Infrastructure (run once)
 
-[`notebooks/01_snowflake_setup_and_export.ipynb`](notebooks/01_snowflake_setup_and_export.ipynb) creates:
+[`assets/notebooks/01_snowflake_setup_and_export.ipynb`](assets/notebooks/01_snowflake_setup_and_export.ipynb) creates:
 - Semantic View over the pre-existing Iceberg tables
 - Initial Ossie export to S3
 - A suspended sync task (enable during demo)
 
 ### 2. Databricks Conversion
 
-[`notebooks/02_databricks_ossie_to_metric_view.ipynb`](notebooks/02_databricks_ossie_to_metric_view.ipynb):
+[`assets/notebooks/02_databricks_ossie_to_metric_view.ipynb`](assets/notebooks/02_databricks_ossie_to_metric_view.ipynb):
 - Reads the Ossie YAML from S3
 - Converts it to a Databricks Metric View using the Apache Ossie converter
 - Adds a new metric (`total_quantity`) on the Databricks side
@@ -85,7 +85,7 @@ Teardown is at [`setup/teardown.sql`](setup/teardown.sql).
 
 ### 3. Round-Trip Import
 
-[`notebooks/03_snowflake_import_from_ossie.ipynb`](notebooks/03_snowflake_import_from_ossie.ipynb):
+[`assets/notebooks/03_snowflake_import_from_ossie.ipynb`](assets/notebooks/03_snowflake_import_from_ossie.ipynb):
 - Reads the Databricks-exported Ossie from S3
 - Imports it as a new Semantic View (`SALES_SV_V2`)
 - Verifies the new metric appears and returns correct results
@@ -108,10 +108,11 @@ interoperable_semantics/
 │   ├── SETUP.md              (full setup guide for new environments)
 │   ├── snowflake_setup.sql   (creates all Snowflake objects)
 │   └── teardown.sql          (removes all Snowflake objects)
-├── notebooks/
-│   ├── 01_snowflake_setup_and_export.ipynb   (run in Snowflake Notebooks)
-│   ├── 02_databricks_ossie_to_metric_view.ipynb  (run in Databricks)
-│   ├── 03_snowflake_import_from_ossie.ipynb   (run in Snowflake Notebooks)
+├── assets/
+│   ├── notebooks/
+│   │   ├── 01_snowflake_setup_and_export.ipynb   (run in Snowflake Notebooks)
+│   │   ├── 02_databricks_ossie_to_metric_view.ipynb  (run in Databricks)
+│   │   └── 03_snowflake_import_from_ossie.ipynb   (run in Snowflake Notebooks)
 │   ├── ossie_converter/      (vendored Apache Ossie Databricks converter)
 │   └── data/                  (source CSVs for reference)
 │       ├── customers.csv
