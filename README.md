@@ -6,29 +6,34 @@ Bidirectional semantic model interoperability between Snowflake Semantic Views a
 
 1. **Shared physical data** -- Snowflake-managed Iceberg tables on S3, readable by both platforms without data duplication
 2. **Semantic model exchange** -- A Snowflake Semantic View exports to Ossie YAML, which Databricks converts into a Metric View (and vice versa)
-3. **Continuous sync** -- Background tasks (suspended by default) on both platforms poll the shared S3 bucket every minute, keeping views in sync during a live demo
+3. **Loop-free continuous sync** -- Background tasks and jobs (suspended by default) on both platforms watch the same S3 bucket every minute. They compare a fingerprint of the model's meaning rather than a file timestamp, so a change on one platform reaches the other in one hop and then the sync goes silent instead of ping-ponging.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    S3: <your-bucket>                                │
-│                                                                     │
-│   ossie/                          iceberg/                          │
-│   ├── ossie_from_snowflake.yaml   ├── customers/ (Parquet + meta)   │
-│   └── ossie_from_databricks.yaml  └── orders/    (Parquet + meta)   │
-└──────────────┬──────────────────────────────────┬───────────────────┘
-               │                                  │
-    ┌──────────┴──────────┐            ┌──────────┴──────────┐
-    │   Snowflake         │            │   Databricks        │
-    │                     │            │                     │
-    │ External Stage      │            │ External Location   │
-    │ External Volume     │            │ Storage Credential  │
-    │ Iceberg Tables      │            │ Iceberg Table Read  │
-    │ Semantic View       │            │ Metric View         │
-    │ Sync Task (1 min)   │            │ Sync Job (1 min)    │
-    └─────────────────────┘            └─────────────────────┘
++---------------------------------------------------------------------+
+|                    S3: <your-bucket>                                |
+|                                                                     |
+|   ossie/                              iceberg/                      |
+|   +-- sales_model.yaml   (shared)     +-- customers/ (Parquet+meta)  |
+|   +-- _state/snowflake.json           +-- orders/    (Parquet+meta)  |
+|   +-- _state/databricks.json                                        |
++--------------+--------------------------------------+---------------+
+               |                                      |
+    +----------+----------+              +------------+--------+
+    |   Snowflake         |              |   Databricks        |
+    |                     |              |                     |
+    | External Stage      |              | External Location   |
+    | External Volume     |              | Storage Credential  |
+    | Iceberg Tables      |              | Iceberg Table Read  |
+    | Semantic View       |              | Metric View         |
+    | SYNC_OSSIE task     |              | sync job            |
+    | (manual or 1 min)   |              | (manual or 1 min)   |
+    +---------------------+              +---------------------+
 ```
+
+The manual flow uses `ossie_from_snowflake.yaml` and `ossie_from_databricks.yaml` instead of
+the single shared `sales_model.yaml`.
 
 ## Prerequisites
 
@@ -56,6 +61,91 @@ Bidirectional semantic model interoperability between Snowflake Semantic Views a
 | EAST   | 750               | 5           | 12             |
 | WEST   | 700               | 5           | 11             |
 
+## Three Flows
+
+The notebooks are grouped by how the sync is driven. Each group is self-contained; pick one
+and stay in it.
+
+### manual/ -- the walkthrough
+
+The original demo, driven cell by cell. Best for explaining what Ossie is and what crosses
+the boundary, because every step is visible and nothing happens on a timer.
+
+- `00_snowflake_setup.ipynb`, `01_demo_and_export.ipynb` (Snowflake)
+- `02_databricks_ossie_to_metric_view.ipynb`, `02b_databricks_ossie_sync.ipynb` (Databricks)
+- `03_snowflake_import_from_ossie.ipynb` (Snowflake)
+
+The `MONITOR_*` tasks in notebooks 01 and 03 loop if both are left running: each write makes
+the writer look like the most recent change, so the model is traded back and forth forever.
+That is what the other two flows fix.
+
+### bidirectional/ -- a change on either platform reaches the other
+
+- `20_snowflake_bidirectional_sync.ipynb`
+- `21_databricks_bidirectional_sync.ipynb`
+
+Both sides may publish. Runbook: [`docs/DEMO_RUNBOOK_BIDIRECTIONAL.md`](docs/DEMO_RUNBOOK_BIDIRECTIONAL.md).
+
+### unidirectional/ -- Snowflake managed, consumers mirror
+
+- `10_snowflake_managed_export.ipynb`
+- `11_databricks_managed_mirror.ipynb`
+
+Snowflake is the source of truth and never imports. A Metric View edited locally is drift and
+gets reverted. Runbook: [`docs/DEMO_RUNBOOK_SNOWFLAKE_MANAGED.md`](docs/DEMO_RUNBOOK_SNOWFLAKE_MANAGED.md).
+
+## How the Sync Avoids a Loop
+
+Both automated flows compare a **fingerprint of what the model means** rather than a file
+timestamp. Each side also records the fingerprint it last agreed on, which gives a three-way
+comparison and a single verdict per run:
+
+| Verdict | Meaning |
+|---|---|
+| `NOOP` | local and shared model agree, nothing written |
+| `ADOPT` | no recorded base, take the shared model |
+| `IMPORT` | shared model changed, replace the local model |
+| `EXPORT` | local model changed, publish it |
+| `CONFLICT` | both changed since the last agreement |
+| `REVERT_LOCAL_DRIFT` | local edit is not authoritative (managed flow only) |
+
+After acting, the new fingerprint becomes the base, so the next run returns `NOOP`. That is
+the loop termination. Timestamps cannot achieve this, because any write makes the writer the
+most recent change.
+
+The fingerprint covers tables, relationships, dimensions and metrics, with table qualifiers
+stripped so the two dialects compare equal. Comments, descriptions, Snowflake-only `FACTS`,
+spec version and dialect labels are excluded, because Databricks cannot round-trip them and
+including them would mean the two sides never agree. The cost is real: **editing only a
+comment propagates nothing.**
+
+## Shared Code, Inlined for Visibility
+
+The sync logic lives once in [`assets/ossie_sync/`](assets/ossie_sync/) and is stamped into
+the notebooks as marked cells:
+
+```
+python3 assets/build_notebooks.py           # stamp all four sync notebooks
+python3 assets/build_notebooks.py --check    # exit 1 if any notebook is stale
+```
+
+Edit the module, re-run the build. The notebooks still carry the code inline so it can be read
+on screen during a demo, but there is only one editable copy. This is correctness rather than
+tidiness: if the Snowflake and Databricks fingerprints differed by a single character, the
+sync would never converge.
+
+## Tests (run these before a live demo)
+
+Both run offline, in a second, with no Snowflake or Databricks connection:
+
+```
+python3 tests/test_convergence.py   # fingerprint survives the round trip, twice
+python3 tests/test_no_loop.py       # two agents settle instead of ping-ponging
+```
+
+`test_no_loop.py` also runs the timestamp scheme for contrast and shows it writing forever.
+These are the gate: if either fails, do not enable the tasks.
+
 ## Setup (New Environment)
 
 For a fresh setup on a new Snowflake/AWS/Databricks account, see
@@ -65,57 +155,70 @@ IAM roles, Snowflake objects, and Databricks configuration from scratch.
 The Snowflake setup script is at [`setup/snowflake_setup.sql`](setup/snowflake_setup.sql).
 Teardown is at [`setup/teardown.sql`](setup/teardown.sql).
 
-## Quick Start (After Setup)
+## S3 Layout
 
-### 1. Infrastructure (run once)
+```
+s3://<your-bucket>/
+  iceberg/                      Snowflake-managed Iceberg tables (Parquet + metadata)
+  ossie/
+    ossie_from_snowflake.yaml   manual flow
+    ossie_from_databricks.yaml  manual flow
+    sales_model.yaml            automated flows: one shared model
+    _state/snowflake.json       written only by Snowflake
+    _state/databricks.json      written only by Databricks
+```
 
-[`assets/notebooks/01_snowflake_setup_and_export.ipynb`](assets/notebooks/01_snowflake_setup_and_export.ipynb) creates:
-- Semantic View over the pre-existing Iceberg tables
-- Initial Ossie export to S3
-- A suspended sync task (enable during demo)
+One writer per state file, so there is no lock and no race. The schedules are offset by about
+30 seconds.
 
-### 2. Databricks Conversion
+## Background Tasks and Jobs
 
-[`assets/notebooks/02_databricks_ossie_to_metric_view.ipynb`](assets/notebooks/02_databricks_ossie_to_metric_view.ipynb):
-- Reads the Ossie YAML from S3
-- Converts it to a Databricks Metric View using the Apache Ossie converter
-- Adds a new metric (`total_quantity`) on the Databricks side
-- Exports the updated model back to S3 as Ossie YAML
-- Includes a suspended sync job (enable during demo)
+Every automated notebook runs two ways, calling the same code:
 
-### 3. Round-Trip Import
+| | Manual | Background |
+|---|---|---|
+| Snowflake | `CALL SYNC_OSSIE(...)` or `EXECUTE TASK`, which works while suspended | `ALTER TASK ... RESUME` |
+| Databricks | `run_once()` in the notebook | Jobs schedule, `max_concurrent_runs = 1` |
 
-[`assets/notebooks/03_snowflake_import_from_ossie.ipynb`](assets/notebooks/03_snowflake_import_from_ossie.ipynb):
-- Reads the Databricks-exported Ossie from S3
-- Imports it as a new Semantic View (`SALES_SV_V2`)
-- Verifies the new metric appears and returns correct results
+Tasks and jobs are **suspended by default**. Enable them during a live demo and disable them
+immediately after.
 
-## Background Sync Tasks
+## Known Limitations
 
-Both platforms include a background task that runs every 1 minute when enabled:
-
-- **Snowflake**: `DEMOS.EXT_SEMANTIC_INTEROP.OSSIE_SYNC_TASK` -- exports the latest semantic view to S3 and imports the latest Databricks export
-- **Databricks**: Scheduled workflow -- reads Ossie from S3, updates the metric view, exports back
-
-These are **suspended by default**. Enable them during a live demo to show real-time sync, then disable immediately after.
+Conflict resolution is crude: when both sides change within the same window, Snowflake wins
+and the other edit is discarded with a log line. Fine for a demo, not for production. The
+production treatment of this and everything else is in
+[`docs/PRODUCTION_ARCHITECTURE.md`](docs/PRODUCTION_ARCHITECTURE.md).
 
 ## Project Structure
 
 ```
 interoperable_semantics/
-├── README.md                 (this file)
+├── README.md
 ├── setup/
-│   ├── SETUP.md              (full setup guide for new environments)
-│   ├── snowflake_setup.sql   (creates all Snowflake objects)
-│   └── teardown.sql          (removes all Snowflake objects)
+│   ├── SETUP.md                  (full setup guide for new environments)
+│   ├── snowflake_setup.sql       (creates all Snowflake objects)
+│   └── teardown.sql              (removes all Snowflake objects)
+├── docs/
+│   ├── DEMO_RUNBOOK_BIDIRECTIONAL.md
+│   ├── DEMO_RUNBOOK_SNOWFLAKE_MANAGED.md
+│   ├── PRODUCTION_ARCHITECTURE.md
+│   └── plans/
 ├── assets/
+│   ├── build_notebooks.py        (stamps ossie_sync into the notebooks)
+│   ├── ossie_sync/               (the only editable copy of the sync logic)
+│   │   ├── fingerprint.py        (canonical projection and hash)
+│   │   ├── decide.py             (three-way comparison, one verdict)
+│   │   ├── state.py              (per-platform base fingerprint)
+│   │   └── shim.py               (Snowflake 0.1.1 <-> converter 0.2.0.dev0)
 │   ├── notebooks/
-│   │   ├── 01_snowflake_setup_and_export.ipynb   (run in Snowflake Notebooks)
-│   │   ├── 02_databricks_ossie_to_metric_view.ipynb  (run in Databricks)
-│   │   └── 03_snowflake_import_from_ossie.ipynb   (run in Snowflake Notebooks)
-│   ├── ossie_converter/      (vendored Apache Ossie Databricks converter)
-│   └── data/                  (source CSVs for reference)
-│       ├── customers.csv
-│       └── orders.csv
-└── .gitignore
+│   │   ├── manual/               (the original cell-by-cell walkthrough)
+│   │   ├── bidirectional/        (both platforms may publish)
+│   │   └── unidirectional/       (Snowflake managed, consumers mirror)
+│   ├── ossie_converter/          (vendored Apache Ossie Databricks converter)
+│   └── data/                     (source CSVs for reference)
+└── tests/
+    ├── test_convergence.py       (fingerprint survives the round trip)
+    └── test_no_loop.py           (two agents settle, timestamps do not)
 ```
+
