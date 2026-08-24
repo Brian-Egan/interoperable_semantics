@@ -81,10 +81,19 @@ That is what the other two flows fix.
 
 ### bidirectional/ -- a change on either platform reaches the other
 
-- `20_snowflake_bidirectional_sync.ipynb`
-- `21_databricks_bidirectional_sync.ipynb`
+A narrated demo across five files. Setup is idempotent and re-run before every demo:
 
-Both sides may publish. Runbook: [`docs/DEMO_RUNBOOK_BIDIRECTIONAL.md`](docs/DEMO_RUNBOOK_BIDIRECTIONAL.md).
+- `00_snowflake_setup.sql` (Snowflake) and `00_databricks_setup.ipynb` (Databricks) reset
+  the environment, create the Iceberg tables if missing, and create `SALES_SV` with two
+  metrics
+- `01_snowflake_semantic_view.ipynb` shows the data, exports to Ossie, imports back
+- `02_databricks_metric_view.ipynb` builds the Metric View, adds a measure, exports
+- `03_snowflake_automation.ipynb` bundles both directions into a procedure and a task
+
+You revisit notebooks as the demo crosses platforms; each handoff says where to go next.
+See [assets/notebooks/bidirectional/README.md](assets/notebooks/bidirectional/README.md)
+for the visit order and
+[docs/DEMO_RUNBOOK_BIDIRECTIONAL.md](docs/DEMO_RUNBOOK_BIDIRECTIONAL.md) for the narration.
 
 ### unidirectional/ -- Snowflake managed, consumers mirror
 
@@ -93,6 +102,10 @@ Both sides may publish. Runbook: [`docs/DEMO_RUNBOOK_BIDIRECTIONAL.md`](docs/DEM
 
 Snowflake is the source of truth and never imports. A Metric View edited locally is drift and
 gets reverted. Runbook: [`docs/DEMO_RUNBOOK_SNOWFLAKE_MANAGED.md`](docs/DEMO_RUNBOOK_SNOWFLAKE_MANAGED.md).
+
+Still to do: this flow has not been restructured into the `00` setup plus narrated-notebook
+shape that `bidirectional/` now uses, and it needs its own `00_snowflake_setup.sql` and
+`00_databricks_setup.ipynb`. The `manual/` flow needs the same treatment.
 
 ## How the Sync Avoids a Loop
 
@@ -213,7 +226,7 @@ interoperable_semantics/
 │   │   └── shim.py               (Snowflake 0.1.1 <-> converter 0.2.0.dev0)
 │   ├── notebooks/
 │   │   ├── manual/               (the original cell-by-cell walkthrough)
-│   │   ├── bidirectional/        (both platforms may publish)
+│   │   ├── bidirectional/        (both platforms may publish; 00 setup + 3 demo notebooks)
 │   │   └── unidirectional/       (Snowflake managed, consumers mirror)
 │   ├── ossie_converter/          (vendored Apache Ossie Databricks converter)
 │   └── data/                     (source CSVs for reference)

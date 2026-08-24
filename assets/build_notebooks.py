@@ -36,15 +36,16 @@ MODULE_DIR = os.path.join(REPO, "assets", "ossie_sync")
 NOTEBOOK_DIR = os.path.join(REPO, "assets", "notebooks")
 
 # Which module each notebook needs. Snowflake reads and writes Ossie natively, so it never
-# needs the shim or the Apache converter; Databricks needs both.
+# needs the shim or the Apache converter; Databricks carries its own shim inline, because
+# explaining the shim is part of that demo.
 SNOWFLAKE_MODULES = ["fingerprint", "decide", "state"]
-DATABRICKS_MODULES = ["fingerprint", "decide", "state", "shim"]
+DATABRICKS_MODULES = ["fingerprint", "decide", "state"]
 
 NOTEBOOKS = {
-    "bidirectional/20_snowflake_bidirectional_sync.ipynb": SNOWFLAKE_MODULES,
-    "bidirectional/21_databricks_bidirectional_sync.ipynb": DATABRICKS_MODULES,
+    "bidirectional/02_databricks_metric_view.ipynb": DATABRICKS_MODULES,
+    "bidirectional/03_snowflake_automation.ipynb": SNOWFLAKE_MODULES,
     "unidirectional/10_snowflake_managed_export.ipynb": SNOWFLAKE_MODULES,
-    "unidirectional/11_databricks_managed_mirror.ipynb": DATABRICKS_MODULES,
+    "unidirectional/11_databricks_managed_mirror.ipynb": DATABRICKS_MODULES + ["shim"],
 }
 
 BEGIN = "# --- BEGIN GENERATED: ossie_sync.{name} ---"
