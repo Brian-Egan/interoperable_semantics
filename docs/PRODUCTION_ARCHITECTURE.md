@@ -214,7 +214,7 @@ What to alert on:
 |---|---|
 | `CONFLICT` on any model | needs a human, and the sync for that model has stopped |
 | `REVERT_LOCAL_DRIFT` | someone is authoring in the wrong place, which is a process problem |
-| no `NOOP` for a model within an expected window | the sync is stuck or the loop is live |
+| no `NO_CHANGE` for a model within an expected window | the sync is stuck or the loop is live |
 | repeated write actions with no intervening change | the fingerprint is not converging |
 | module version mismatch between platforms | fingerprints are not comparable |
 

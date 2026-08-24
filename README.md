@@ -102,14 +102,14 @@ comparison and a single verdict per run:
 
 | Verdict | Meaning |
 |---|---|
-| `NOOP` | local and shared model agree, nothing written |
+| `NO_CHANGE` | local and shared model agree, nothing written |
 | `ADOPT` | no recorded base, take the shared model |
 | `IMPORT` | shared model changed, replace the local model |
 | `EXPORT` | local model changed, publish it |
 | `CONFLICT` | both changed since the last agreement |
 | `REVERT_LOCAL_DRIFT` | local edit is not authoritative (managed flow only) |
 
-After acting, the new fingerprint becomes the base, so the next run returns `NOOP`. That is
+After acting, the new fingerprint becomes the base, so the next run returns `NO_CHANGE`. That is
 the loop termination. Timestamps cannot achieve this, because any write makes the writer the
 most recent change.
 

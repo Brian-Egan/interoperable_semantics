@@ -38,7 +38,7 @@ Each side computes a `semantic_fingerprint` over a platform-neutral projection o
 
 ```python
 def decide(local_fp, remote_fp, base_fp, allowed=("IMPORT", "EXPORT")):
-    if local_fp == remote_fp:              return "NOOP"
+    if local_fp == remote_fp:              return "NO_CHANGE"
     if base_fp is None:                    return "ADOPT"
     if local_fp == base_fp:                action = "IMPORT"
     elif remote_fp == base_fp:             action = "EXPORT"
@@ -48,7 +48,7 @@ def decide(local_fp, remote_fp, base_fp, allowed=("IMPORT", "EXPORT")):
     return action
 ```
 
-After `IMPORT`, `base := remote_fp`. After `EXPORT`, `base := local_fp`. The next tick sees `local_fp == remote_fp` and returns `NOOP`. That is the loop termination.
+After `IMPORT`, `base := remote_fp`. After `EXPORT`, `base := local_fp`. The next tick sees `local_fp == remote_fp` and returns `NO_CHANGE`. That is the loop termination.
 
 The `allowed` parameter is what makes the unidirectional variant reuse this function unchanged rather than forking it.
 
@@ -149,7 +149,7 @@ Separate notebooks, `10_snowflake_managed_export.ipynb` and `11_databricks_manag
 
 - `python tests/test_convergence.py` — fingerprint identical at every hop of two full round trips. Gate on this before touching either platform.
 - `python assets/build_notebooks.py --check` — notebooks match the module.
-- Rehearse the demo end to end with schedules resumed, driving (c) and (d) manually: exactly one `EXPORT` then one `IMPORT`, then `NOOP` on both sides for three consecutive ticks. Oscillation past that means the fingerprint is not canonical.
+- Rehearse the demo end to end with schedules resumed, driving (c) and (d) manually: exactly one `EXPORT` then one `IMPORT`, then `NO_CHANGE` on both sides for three consecutive ticks. Oscillation past that means the fingerprint is not canonical.
 - Manual and scheduled parity: `EXECUTE TASK` and `CALL SYNC_OSSIE` produce the same verdict for the same state.
 - Snowflake edit path: add a metric to `SALES_SV`, confirm it reaches the Metric View and is queryable with `MEASURE()`.
 - Conflict: edit both within one window, expect `CONFLICT` on both sides and the Snowflake definition to win.

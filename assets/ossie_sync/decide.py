@@ -15,7 +15,7 @@ changed" from "I changed", so both sides write and the model ping-pongs forever.
 each side can see which of the two moved, act once, record the new base, and go quiet.
 """
 
-NOOP = "NOOP"
+NO_CHANGE = "NO_CHANGE"
 ADOPT = "ADOPT"
 IMPORT = "IMPORT"
 EXPORT = "EXPORT"
@@ -27,7 +27,7 @@ SNOWFLAKE_MANAGED_SOURCE = ("EXPORT",)      # Snowflake in the managed architect
 SNOWFLAKE_MANAGED_MIRROR = ("IMPORT",)      # Databricks in the managed architecture
 
 REASONS = {
-    NOOP: "local and shared model agree, nothing to do",
+    NO_CHANGE: "local and shared model agree, nothing to do",
     ADOPT: "no recorded base, taking the shared model as the starting point",
     IMPORT: "shared model changed, replacing the local model",
     EXPORT: "local model changed, publishing to the shared Ossie file",
@@ -80,15 +80,15 @@ def decide(local, remote, base, allowed=BIDIRECTIONAL, conflict_winner=None, pla
         return Decision(action, REASONS[action], local, remote, base)
 
     if local and remote and local == remote:
-        return verdict(NOOP)
+        return verdict(NO_CHANGE)
 
     if not local:
         # Nothing here yet, so there is no local change to protect.
-        return verdict(ADOPT if remote else NOOP)
+        return verdict(ADOPT if remote else NO_CHANGE)
 
     if not remote:
         # Local model exists but the shared file does not.
-        return verdict(EXPORT if EXPORT in allowed else NOOP)
+        return verdict(EXPORT if EXPORT in allowed else NO_CHANGE)
 
     if base is None:
         return verdict(ADOPT)
@@ -108,7 +108,7 @@ def decide(local, remote, base, allowed=BIDIRECTIONAL, conflict_winner=None, pla
         # Managed architecture: a locally edited mirror is drift, not a contribution.
         return verdict(REVERT_LOCAL_DRIFT)
     if action == IMPORT and IMPORT not in allowed:
-        return verdict(NOOP)
+        return verdict(NO_CHANGE)
 
     return verdict(action)
 

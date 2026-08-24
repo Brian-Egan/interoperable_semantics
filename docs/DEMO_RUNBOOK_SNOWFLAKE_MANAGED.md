@@ -92,7 +92,7 @@ allowed to change it) or keep it technical. Depends on the audience.
 2. Show the Metric View does not exist.
 3. `run_once()`. Expected `ADOPT`, then the Metric View appears with
    `ORDER_COUNT` and `TOTAL_ORDER_AMOUNT`.
-4. `run_once()` again. `NOOP - converged`.
+4. `run_once()` again. `NO_CHANGE - converged`.
 5. Resume the mirror job.
 
 Identical to the bidirectional demo up to this point. Everything after it diverges.
@@ -178,7 +178,7 @@ looking like a bug.
 
 | Verdict | Meaning |
 |---|---|
-| `NOOP` | Fingerprints match. Nothing written. |
+| `NO_CHANGE` | Fingerprints match. Nothing written. |
 | `ADOPT` | No recorded base. Takes the Ossie file as the starting point. |
 | `IMPORT` | Ossie file changed. Local model replaced. |
 | `EXPORT` | Snowflake side only. Publishes the Semantic View. |

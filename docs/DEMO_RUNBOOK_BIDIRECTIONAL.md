@@ -99,7 +99,7 @@ about to read those same files.
    View was defined by Snowflake, converted through Ossie, and is now queryable in
    Databricks.
 
-4. Run `run_once()` a second time. It prints `NOOP - converged`. Nothing was written.
+4. Run `run_once()` a second time. It prints `NO_CHANGE - converged`. Nothing was written.
    This is the loop termination, demonstrated in one cell rather than described.
 
 5. Resume the background job in Workflows. From here on the demo has a 1-minute
@@ -178,7 +178,7 @@ in the interchange format, and Snowflake has had no involvement yet.
    EAST 12/750/5, WEST 11/700/5. A measure defined in Databricks is now a metric in a
    Snowflake Semantic View.
 
-5. Run the task once more. `NOOP - converged`. Both sides agree, so nothing is written.
+5. Run the task once more. `NO_CHANGE - converged`. Both sides agree, so nothing is written.
 
 6. If you want to show the background schedule doing the same work unattended, resume
    the task and display its history:
@@ -192,7 +192,7 @@ in the interchange format, and Snowflake has had no involvement yet.
     ORDER BY scheduled_time DESC LIMIT 10;
    ```
 
-   A column of `NOOP - converged` is the point: the sync runs every minute and writes
+   A column of `NO_CHANGE - converged` is the point: the sync runs every minute and writes
    nothing until something genuinely changes.
 
 ---
@@ -231,7 +231,7 @@ Resetting both state files matters. A stale `base_fingerprint` makes the next ru
 
 | Verdict | Meaning |
 |---|---|
-| `NOOP` | Local and shared fingerprints match. Nothing written. |
+| `NO_CHANGE` | Local and shared fingerprints match. Nothing written. |
 | `ADOPT` | No recorded base. Takes the shared file as the starting point. |
 | `IMPORT` | Shared file changed, local did not. Local model replaced. |
 | `EXPORT` | Local changed, shared file did not. Shared file written. |
@@ -266,7 +266,7 @@ writes Ossie natively. That asymmetry is a fair thing to point out.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `run_once()` reports `CONFLICT` unexpectedly | Stale state file from an earlier run | Run the full reset |
-| Every run reports `EXPORT` or `IMPORT`, never `NOOP` | Fingerprint not converging | Fall back to slides; run `tests/test_convergence.py` afterwards |
+| Every run reports `EXPORT` or `IMPORT`, never `NO_CHANGE` | Fingerprint not converging | Fall back to slides; run `tests/test_convergence.py` afterwards |
 | Databricks cell hangs on `%pip` | Cold serverless compute | Warm it before the demo, or install the converter as a cluster library |
 | `EXECUTE TASK` errors on privileges | Session role reset | `USE ROLE ACCOUNTADMIN` |
 | Snowflake sees a stale file | Directory table metadata not refreshed | `ALTER STAGE OSSIE_S3_STAGE REFRESH` |

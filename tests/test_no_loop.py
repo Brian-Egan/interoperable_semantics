@@ -130,9 +130,9 @@ def show(title, log, s3):
 
 
 def settled(log, from_tick=2):
-    """True if nothing but NOOP happens after the given tick."""
+    """True if nothing but NO_CHANGE happens after the given tick."""
     tail = [action for _, action in log[from_tick * 2:]]
-    return all(action == "NOOP" for action in tail)
+    return all(action == "NO_CHANGE" for action in tail)
 
 
 def scenario_bidirectional_snowflake_edit():

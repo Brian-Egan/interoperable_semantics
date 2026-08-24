@@ -11,7 +11,7 @@ from .decide import (  # noqa: F401
     CONFLICT,
     EXPORT,
     IMPORT,
-    NOOP,
+    NO_CHANGE,
     REVERT_LOCAL_DRIFT,
     SNOWFLAKE_MANAGED_MIRROR,
     SNOWFLAKE_MANAGED_SOURCE,
