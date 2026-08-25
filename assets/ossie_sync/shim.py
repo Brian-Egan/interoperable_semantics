@@ -117,7 +117,48 @@ def snowflake_to_converter(ossie_yaml, drop_fact_fields=True):
                         re.escape(ds_name) + r"\.", "", d["expression"], flags=re.IGNORECASE
                     )
 
+        # Drop primary_key / unique_keys before handing the document to the converter.
+        #
+        # A Metric View has nowhere to put a primary key. The converter uses one only to
+        # set `rely.at_most_one_match` on a matching many_to_one join, and warns loudly
+        # that it is doing so. Since the caller strips `rely` anyway (older Databricks
+        # serdes reject it), the key contributes nothing here except two UserWarnings on
+        # every import, which look like errors during a demo.
+        #
+        # Nothing is lost on the return trip: the key was never represented in the Metric
+        # View, so converter_to_snowflake rebuilds it from the join columns regardless.
+        for ds in model.get("datasets", []) or []:
+            ds.pop("primary_key", None)
+            ds.pop("unique_keys", None)
+
     return yaml.safe_dump(root, sort_keys=False)
+
+
+def _drop_object_ai_context(node):
+    """Remove every object-form `ai_context` anywhere in the document.
+
+    The Apache Ossie schema allows `ai_context` to be either a string or an object.
+    Snowflake's importer only accepts the string form, and an object fails with:
+
+        Cannot deserialize value of type `java.lang.String` from Object value
+        ... OsiSemanticModel$Metric["ai_context"]
+
+    The Databricks converter emits the object form, `{"synonyms": [...]}`, for any measure
+    or dimension that carries synonyms. Adding a metric through the Databricks UI and
+    filling in the synonyms field is therefore enough to make the Snowflake import fail.
+
+    The synonyms are dropped rather than folded into a string. Snowflake's own Ossie export
+    does not emit `ai_context` at all, so dropping it keeps the round trip symmetric, and
+    the fingerprint ignores it either way. String-form `ai_context` is left alone.
+    """
+    if isinstance(node, dict):
+        if isinstance(node.get("ai_context"), dict):
+            del node["ai_context"]
+        for value in node.values():
+            _drop_object_ai_context(value)
+    elif isinstance(node, list):
+        for item in node:
+            _drop_object_ai_context(item)
 
 
 def converter_to_snowflake(ossie_yaml, dialect=SNOWFLAKE_DIALECT, model_name=None):
@@ -135,11 +176,14 @@ def converter_to_snowflake(ossie_yaml, dialect=SNOWFLAKE_DIALECT, model_name=Non
       `dimension` marker => facts) so the metric expressions resolve
     - marks every field on a non-fact (joined) dataset with `dimension: {}` so Snowflake
       classifies region/customer_name as dimensions, not facts
+    - strips object-form `ai_context`, which Snowflake's importer rejects (see
+      _drop_object_ai_context)
     - optionally renames the model (the new semantic view name) without touching the
       fact dataset name
     """
     root = yaml.safe_load(ossie_yaml)
     root["version"] = SNOWFLAKE_OSSIE_VERSION
+    _drop_object_ai_context(root)
     for model in root.get("semantic_model", []) or []:
         datasets = model.get("datasets", []) or []
 
@@ -159,6 +203,27 @@ def converter_to_snowflake(ossie_yaml, dialect=SNOWFLAKE_DIALECT, model_name=Non
                 rel["from"] = rel["from"].upper()
             if "to" in rel:
                 rel["to"] = rel["to"].upper()
+
+        # Rebuild the primary key on the referenced side of each relationship.
+        #
+        # A Metric View expresses a join but has no concept of a primary key, so the key is
+        # gone by the time the model comes back. Snowflake will not accept the relationship
+        # without it:
+        #
+        #     The referenced key in the relationship 'ORDERS REFERENCES CUSTOMERS' must be
+        #     the primary or unique key of the referenced entity.
+        #
+        # The join's `to_columns` are exactly that key, so take them. Note that the column
+        # is NOT added as a field: Snowflake's own Ossie export lists
+        # `primary_key: [CUSTOMER_ID]` on a dataset whose only fields are CUSTOMER_NAME and
+        # REGION, so a key without a matching field is the shape Snowflake itself produces.
+        # Adding it as a field would also make it a queryable dimension, which it is not.
+        by_name = {ds.get("name"): ds for ds in datasets}
+        for rel in model.get("relationships", []) or []:
+            target = by_name.get(rel.get("to"))
+            keys = [str(c).upper() for c in rel.get("to_columns") or []]
+            if target is not None and keys and not target.get("primary_key"):
+                target["primary_key"] = keys
 
         fact_ds_name = datasets[0]["name"] if datasets else None
 

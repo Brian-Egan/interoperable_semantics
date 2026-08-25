@@ -43,6 +43,7 @@ DATABRICKS_MODULES = ["fingerprint", "decide", "state"]
 
 NOTEBOOKS = {
     "bidirectional/02_databricks_metric_view.ipynb": DATABRICKS_MODULES,
+    "bidirectional/03_databricks_metric_automation.ipynb": DATABRICKS_MODULES,
     "bidirectional/03_snowflake_automation.ipynb": SNOWFLAKE_MODULES,
     "unidirectional/10_snowflake_managed_export.ipynb": SNOWFLAKE_MODULES,
     "unidirectional/11_databricks_managed_mirror.ipynb": DATABRICKS_MODULES + ["shim"],
