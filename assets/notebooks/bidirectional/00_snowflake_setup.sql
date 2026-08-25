@@ -7,8 +7,10 @@
  * demo-specific objects are reset every time.
  *
  * What it does
- *   1. Creates the file format, storage integration, external stage and external volume
- *      if they do not exist.
+ *   1. Verifies the one-time plumbing exists (storage integration, external stage,
+ *      external volume). It does NOT create them: those take literal bucket and IAM values
+ *      plus an AWS trust-policy step, so they live in setup/snowflake_setup.sql and
+ *      setup/SETUP.md and are built once per account.
  *   2. Creates the CUSTOMERS and ORDERS Iceberg tables if they do not exist, and loads
  *      the demo rows only when the tables are empty.
  *   3. Resets the demo: drops the sync procedure and task, clears the Ossie files and
@@ -16,62 +18,49 @@
  *   4. Creates SALES_SV in its BASELINE state: two metrics only. TOTAL_QUANTITY and
  *      AVG_ORDER_AMOUNT arrive during the demo, from Databricks and from Snowflake.
  *
- * Before running, replace:
- *   <YOUR_S3_BUCKET>       your S3 bucket name
- *   <YOUR_AWS_ACCOUNT_ID>  your 12-digit AWS account ID
+ * Nothing to fill in. The bucket is already baked into the stage and external volume, and
+ * this script refers to both by name.
  *
- * First-time setup on a brand new account also needs the IAM trust policy step. See
- * setup/SETUP.md. This script is the per-demo reset, not the one-time infrastructure build.
+ * If the verification in section 1 fails, run setup/SETUP.md first.
  *
  * Run the Databricks companion, 00_databricks_setup.ipynb, after this.
  */
 
-SET s3_bucket     = '<YOUR_S3_BUCKET>';
-SET aws_account_id = '<YOUR_AWS_ACCOUNT_ID>';
 SET database_name = 'DEMOS';
 SET schema_name   = 'EXT_SEMANTIC_INTEROP';
 
 USE ROLE ACCOUNTADMIN;
 
+-- IDENTIFIER() takes a single session variable, not a concatenation expression, so build
+-- the qualified name first.
+SET schema_fqn = $database_name || '.' || $schema_name;
+
 CREATE DATABASE IF NOT EXISTS IDENTIFIER($database_name);
-CREATE SCHEMA IF NOT EXISTS IDENTIFIER($database_name || '.' || $schema_name);
-USE SCHEMA IDENTIFIER($database_name || '.' || $schema_name);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER($schema_fqn);
+USE SCHEMA IDENTIFIER($schema_fqn);
 
 
 -- ===========================================================================
--- 1. Plumbing: file format, storage integration, stage, external volume
+-- 1. Verify the one-time plumbing
 -- ===========================================================================
+-- CREATE STORAGE INTEGRATION, CREATE STAGE and CREATE EXTERNAL VOLUME all require literal
+-- parameter values; they reject session variables and string concatenation. That is why
+-- they are not here. Each of the three below should return exactly one row.
 
--- Reads a whole YAML file as a single value rather than parsing it as CSV.
+-- Reads a whole YAML file as a single value rather than parsing it as CSV. This one takes
+-- no bucket or account values, so it is safe to create here.
 CREATE FILE FORMAT IF NOT EXISTS RAW_TEXT_FMT
   TYPE = 'CSV'
   FIELD_DELIMITER = NONE
   RECORD_DELIMITER = NONE
   ESCAPE_UNENCLOSED_FIELD = NONE;
 
-CREATE STORAGE INTEGRATION IF NOT EXISTS OSSIE_S3_INT
-  TYPE = EXTERNAL_STAGE
-  STORAGE_PROVIDER = 'S3'
-  ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::' || $aws_account_id || ':role/snowflake-ossie-role'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://' || $s3_bucket || '/');
+SHOW STORAGE INTEGRATIONS LIKE 'OSSIE_S3_INT';
+SHOW EXTERNAL VOLUMES LIKE 'OSSIE_ICEBERG_VOL';
 
--- The directory table is what lets us see file timestamps from SQL.
-CREATE STAGE IF NOT EXISTS OSSIE_S3_STAGE
-  URL = 's3://' || $s3_bucket || '/ossie/'
-  STORAGE_INTEGRATION = OSSIE_S3_INT
-  DIRECTORY = (ENABLE = TRUE)
-  FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
-                 ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE);
-
-CREATE EXTERNAL VOLUME IF NOT EXISTS OSSIE_ICEBERG_VOL
-  STORAGE_LOCATIONS = (
-    (NAME = 'us-west-2-ossie'
-     STORAGE_BASE_URL = 's3://' || $s3_bucket || '/iceberg/'
-     STORAGE_PROVIDER = 'S3'
-     STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::' || $aws_account_id || ':role/snowflake-ossie-role')
-  )
-  ALLOW_WRITES = TRUE;
+-- Also confirms the directory table is enabled, which the demo relies on to see file
+-- timestamps from SQL.
+SHOW STAGES LIKE 'OSSIE_S3_STAGE' IN SCHEMA IDENTIFIER($schema_fqn);
 
 
 -- ===========================================================================

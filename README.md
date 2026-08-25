@@ -161,12 +161,26 @@ These are the gate: if either fails, do not enable the tasks.
 
 ## Setup (New Environment)
 
-For a fresh setup on a new Snowflake/AWS/Databricks account, see
-[`setup/SETUP.md`](setup/SETUP.md). It walks through creating the S3 bucket,
-IAM roles, Snowflake objects, and Databricks configuration from scratch.
+Setting this up in your own Snowflake, AWS and Databricks accounts is mostly an IAM
+trust-policy exercise. Two ways to do it:
+
+**Have CoCo do it.** Point Cortex Code at
+[`setup/COCO_SETUP_GUIDE.md`](setup/COCO_SETUP_GUIDE.md):
+
+> Read `setup/COCO_SETUP_GUIDE.md` and set up the interoperable semantics demo in my
+> Snowflake, AWS and Databricks accounts.
+
+It gathers the inputs it needs, works through the phases in order, and stops at each
+verification gate rather than pressing on after a failure.
+
+**Or do it by hand.** [`setup/SETUP.md`](setup/SETUP.md) walks through creating the S3
+bucket, IAM roles, Snowflake objects, and Databricks configuration from scratch.
 
 The Snowflake setup script is at [`setup/snowflake_setup.sql`](setup/snowflake_setup.sql).
 Teardown is at [`setup/teardown.sql`](setup/teardown.sql).
+
+Either way, the one-time infrastructure is separate from the per-demo reset. Once setup is
+done, the `00_` scripts in each flow directory need no configuration.
 
 ## S3 Layout
 
@@ -210,6 +224,7 @@ interoperable_semantics/
 ├── README.md
 ├── setup/
 │   ├── SETUP.md                  (full setup guide for new environments)
+│   ├── COCO_SETUP_GUIDE.md       (hand this to CoCo to do the setup for you)
 │   ├── snowflake_setup.sql       (creates all Snowflake objects)
 │   └── teardown.sql              (removes all Snowflake objects)
 ├── docs/
