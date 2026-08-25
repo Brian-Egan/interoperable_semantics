@@ -1,25 +1,39 @@
 /*
  * Snowflake Setup Script: Interoperable Semantics Demo
  *
- * This script creates all Snowflake objects needed for the demo.
- * Run with ACCOUNTADMIN role.
+ * Creates the one-time Snowflake objects for the demo. Run with ACCOUNTADMIN.
  *
- * Before running, replace these placeholders:
+ * PREFERRED PATH: do not run this by hand. Point Cortex Code at
+ * setup/COCO_SETUP_GUIDE.md instead. This script is only half the job: the storage
+ * integration and external volume each mint an external ID that has to be written into an
+ * AWS IAM trust policy before anything can read S3, and the Databricks side needs its own
+ * credential and external location. The guide sequences all of that and verifies each step.
+ * Running this script on its own leaves you with objects that cannot reach the bucket.
+ *
+ * If you do run it manually, replace these two tokens THROUGHOUT the file:
  *   <YOUR_S3_BUCKET>       -- your S3 bucket name (e.g. snowflake-ossie-interop)
  *   <YOUR_AWS_ACCOUNT_ID>  -- your 12-digit AWS account ID
  *
- * After running, note the outputs from DESC INTEGRATION and DESC EXTERNAL VOLUME
- * -- you need STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID to update the
- * IAM trust policy. See SETUP.md Step 6.
+ * They are deliberately literal tokens rather than session variables. CREATE STORAGE
+ * INTEGRATION, CREATE STAGE and CREATE EXTERNAL VOLUME accept only literal parameter
+ * values; passing a session variable or a concatenation fails with
+ * "syntax error ... unexpected '||'". Do not convert them back to SET variables.
+ *
+ * After running, note the outputs from DESC INTEGRATION and DESC EXTERNAL VOLUME:
+ * you need STORAGE_AWS_IAM_USER_ARN and STORAGE_AWS_EXTERNAL_ID from each to update the
+ * IAM trust policy. See SETUP.md, or let the guide handle it.
  */
 
 -- ===========================================================================
--- CONFIGURATION (edit these)
+-- CONFIGURATION
 -- ===========================================================================
-SET s3_bucket = '<YOUR_S3_BUCKET>';
-SET aws_account_id = '<YOUR_AWS_ACCOUNT_ID>';
+-- Object names only. The bucket and AWS account are literal tokens above.
 SET database_name = 'DEMOS';
 SET schema_name = 'EXT_SEMANTIC_INTEROP';
+
+-- IDENTIFIER() takes a single session variable, not a concatenation, so build the
+-- qualified name once.
+SET schema_fqn = $database_name || '.' || $schema_name;
 
 -- ===========================================================================
 -- CREATE DATABASE AND SCHEMA
@@ -27,8 +41,8 @@ SET schema_name = 'EXT_SEMANTIC_INTEROP';
 USE ROLE ACCOUNTADMIN;
 
 CREATE DATABASE IF NOT EXISTS IDENTIFIER($database_name);
-CREATE SCHEMA IF NOT EXISTS IDENTIFIER($database_name || '.' || $schema_name);
-USE SCHEMA IDENTIFIER($database_name || '.' || $schema_name);
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER($schema_fqn);
+USE SCHEMA IDENTIFIER($schema_fqn);
 
 -- ===========================================================================
 -- FILE FORMAT (for reading raw YAML as single value)
@@ -46,8 +60,8 @@ CREATE OR REPLACE STORAGE INTEGRATION OSSIE_S3_INT
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
   ENABLED = TRUE
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::' || $aws_account_id || ':role/snowflake-ossie-role'
-  STORAGE_ALLOWED_LOCATIONS = ('s3://' || $s3_bucket || '/');
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:role/snowflake-ossie-role'
+  STORAGE_ALLOWED_LOCATIONS = ('s3://<YOUR_S3_BUCKET>/');
 
 -- >>> IMPORTANT: Note these values for your IAM trust policy <<<
 DESC INTEGRATION OSSIE_S3_INT;
@@ -56,9 +70,12 @@ DESC INTEGRATION OSSIE_S3_INT;
 -- ===========================================================================
 -- EXTERNAL STAGE (for Ossie YAML files)
 -- ===========================================================================
+-- DIRECTORY = (ENABLE = TRUE) is required: the demo reads file timestamps from the
+-- directory table.
 CREATE OR REPLACE STAGE OSSIE_S3_STAGE
-  URL = 's3://' || $s3_bucket || '/ossie/'
+  URL = 's3://<YOUR_S3_BUCKET>/ossie/'
   STORAGE_INTEGRATION = OSSIE_S3_INT
+  DIRECTORY = (ENABLE = TRUE)
   FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
                  ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE);
 
@@ -68,9 +85,9 @@ CREATE OR REPLACE STAGE OSSIE_S3_STAGE
 CREATE OR REPLACE EXTERNAL VOLUME OSSIE_ICEBERG_VOL
   STORAGE_LOCATIONS = (
     (NAME = 'us-west-2-ossie'
-     STORAGE_BASE_URL = 's3://' || $s3_bucket || '/iceberg/'
+     STORAGE_BASE_URL = 's3://<YOUR_S3_BUCKET>/iceberg/'
      STORAGE_PROVIDER = 'S3'
-     STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::' || $aws_account_id || ':role/snowflake-ossie-role')
+     STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:role/snowflake-ossie-role')
   )
   ALLOW_WRITES = TRUE;
 
@@ -176,31 +193,21 @@ SINGLE = TRUE OVERWRITE = TRUE;
 LIST @OSSIE_S3_STAGE;
 
 -- ===========================================================================
--- SYNC TASK (suspended by default -- enable during demo)
+-- SYNC TASK: removed on purpose
 -- ===========================================================================
-CREATE OR REPLACE TASK OSSIE_SYNC_TASK
-  WAREHOUSE = COMPUTE_WH
-  SCHEDULE = '1 MINUTE'
-  COMMENT = 'Exports semantic view to S3 and imports Databricks export. SUSPENDED by default.'
-AS
-BEGIN
-  COPY INTO @OSSIE_S3_STAGE/ossie_from_snowflake.yaml
-  FROM (SELECT SYSTEM$READ_OSSIE_YAML_FROM_SEMANTIC_VIEW('DEMOS.EXT_SEMANTIC_INTEROP.SALES_SV'))
-  FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
-                 ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE)
-  SINGLE = TRUE OVERWRITE = TRUE;
+-- This file used to create an OSSIE_SYNC_TASK that exported the semantic view and
+-- imported the Databricks export on every run, unconditionally. That task loops: the
+-- import replaces the semantic view, which makes it look newer than the file, which
+-- triggers another export, and so on. It never settles.
+--
+-- Each demo flow now creates its own task, and those compare a fingerprint of what the
+-- model means before writing anything. See:
+--   assets/notebooks/bidirectional/03_snowflake_automation.ipynb
+--   assets/notebooks/unidirectional/10_snowflake_managed_export.ipynb
+--
+-- Do not re-add a task here. Infrastructure setup and demo automation are separate jobs.
 
-  LET yaml_content VARCHAR := (
-    SELECT $1 FROM @OSSIE_S3_STAGE/ossie_from_databricks.yaml
-    (FILE_FORMAT => 'DEMOS.EXT_SEMANTIC_INTEROP.RAW_TEXT_FMT')
-  );
-  IF (:yaml_content IS NOT NULL) THEN
-    CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_OSSIE_YAML('DEMOS.EXT_SEMANTIC_INTEROP', :yaml_content);
-  END IF;
-END;
-
--- Verify task is suspended
-SHOW TASKS;
+SHOW TASKS;   -- expect none in this schema after a fresh setup
 
 -- ===========================================================================
 -- DONE

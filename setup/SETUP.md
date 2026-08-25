@@ -3,6 +3,15 @@
 This guide walks you through setting up the demo from scratch on any Snowflake
 account with any AWS account. The process takes about 15 minutes.
 
+> **Faster option:** point Cortex Code at [`COCO_SETUP_GUIDE.md`](COCO_SETUP_GUIDE.md) and
+> have it do this for you. Same steps, executed in order, with a verification gate after
+> each phase.
+>
+> **Either way, do not run [`snowflake_setup.sql`](snowflake_setup.sql) on its own.** It is
+> only the Snowflake half, and the objects it creates cannot reach S3 until the IAM trust
+> policy has been updated with external IDs that do not exist until after the script runs.
+> Follow the ordered steps below.
+
 ## Prerequisites
 
 - AWS CLI installed and authenticated (`aws sts get-caller-identity` works)

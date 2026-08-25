@@ -13,6 +13,29 @@ everything else and need no configuration.
 
 ---
 
+## A note on `setup/snowflake_setup.sql`
+
+That file exists, and it looks like the thing to run. **Tell the user not to run it by
+hand**, and do not simply execute it yourself as a shortcut for Phase 3.
+
+It creates the Snowflake objects and stops there, which is the useless half of the job.
+The storage integration and the external volume each mint an external ID that has to be
+written into an AWS IAM trust policy before either can reach S3, and neither the AWS side
+nor the Databricks side exists yet at that point. Run it alone and you get a schema full of
+objects that cannot read the bucket, with an error message that points at permissions rather
+than at the missing step.
+
+It also has to be find-and-replaced in two places rather than configured at the top, because
+`CREATE STORAGE INTEGRATION`, `CREATE STAGE` and `CREATE EXTERNAL VOLUME` reject session
+variables. That is easy to get half-right.
+
+Use the phases below instead. They contain the same DDL, in an order that works, with the
+trust-policy handshake in the middle and a verification gate after it. Treat
+`snowflake_setup.sql` as a reference for the object definitions if you want to read them in
+one place.
+
+---
+
 ## Agent instructions: read this part first
 
 **Do not create anything before completing Phase 0.** The IAM setup has a
