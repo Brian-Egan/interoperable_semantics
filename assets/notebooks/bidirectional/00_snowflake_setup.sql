@@ -1,3 +1,5 @@
+-- Bidirectional demo: Snowflake setup and reset for Iceberg + Ossie interop
+-- Co-authored with CoCo
 /*
  * Bidirectional Demo: Snowflake Setup and Reset
  * =============================================
@@ -57,12 +59,9 @@ CREATE FILE FORMAT IF NOT EXISTS RAW_TEXT_FMT
 
 SHOW STORAGE INTEGRATIONS LIKE 'OSSIE_S3_INT';
 SHOW EXTERNAL VOLUMES LIKE 'OSSIE_ICEBERG_VOL';
-
 -- Also confirms the directory table is enabled, which the demo relies on to see file
 -- timestamps from SQL.
 SHOW STAGES LIKE 'OSSIE_S3_STAGE' IN SCHEMA IDENTIFIER($schema_fqn);
-
-
 -- ===========================================================================
 -- 2. Iceberg tables, created only if missing
 -- ===========================================================================
