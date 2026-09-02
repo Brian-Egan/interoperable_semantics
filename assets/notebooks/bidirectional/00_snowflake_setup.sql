@@ -61,7 +61,7 @@ SHOW STORAGE INTEGRATIONS LIKE 'OSSIE_S3_INT';
 SHOW EXTERNAL VOLUMES LIKE 'OSSIE_ICEBERG_VOL';
 -- Also confirms the directory table is enabled, which the demo relies on to see file
 -- timestamps from SQL.
-SHOW STAGES LIKE 'OSSIE_S3_STAGE' IN SCHEMA IDENTIFIER($schema_fqn);
+SHOW STAGES LIKE 'LIVE_OSSIE_STAGE' IN SCHEMA IDENTIFIER($schema_fqn);
 -- ===========================================================================
 -- 2. Iceberg tables, created only if missing
 -- ===========================================================================
@@ -134,11 +134,11 @@ DROP PROCEDURE IF EXISTS IMPORT_FROM_OSSIE(STRING, STRING, STRING, STRING, STRIN
 
 -- Clear the shared model and both sync state files. A leftover state file makes the
 -- first sync of the next demo report a conflict instead of a clean adoption.
-REMOVE @OSSIE_S3_STAGE/sales_model.yaml;
-REMOVE @OSSIE_S3_STAGE/_state/;
-ALTER STAGE OSSIE_S3_STAGE REFRESH;
+REMOVE @LIVE_OSSIE_STAGE/sales_model.yaml;
+REMOVE @LIVE_OSSIE_STAGE/_state/;
+ALTER STAGE LIVE_OSSIE_STAGE REFRESH;
 
-LIST @OSSIE_S3_STAGE;   -- expect no sales_model.yaml and no _state/ files
+LIST @LIVE_OSSIE_STAGE;   -- expect no sales_model.yaml and no _state/ files
 
 
 -- ===========================================================================
