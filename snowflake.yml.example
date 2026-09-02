@@ -1,0 +1,24 @@
+# Project definition for the Snowflake CLI.
+#
+# Copy this file to snowflake.yml and fill in your own values. snowflake.yml is gitignored,
+# so your AWS account ID never enters the repository.
+#
+#   cp snowflake.yml.example snowflake.yml
+#   # edit snowflake.yml
+#   snow sql -c <your-connection> -f setup/snowflake_setup.sql
+#
+# The setup script reads these as <% ctx.env.s3_bucket %> and <% ctx.env.aws_account_id %>.
+# Substitution happens client-side, so the values are never typed on the command line and
+# never appear in your shell history.
+#
+# Note that no AWS access key or secret belongs here. The demo authenticates with IAM role
+# trust: Snowflake mints an external ID and you allow it in the role's trust policy. The
+# account ID below is not a credential, but it is worth keeping out of a public repo.
+definition_version: 2
+
+env:
+  # S3 bucket name only, with no s3:// prefix and no trailing slash.
+  s3_bucket: your-bucket-name
+
+  # Your 12-digit AWS account ID, quoted so leading zeros survive.
+  aws_account_id: "000000000000"

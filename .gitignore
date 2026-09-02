@@ -8,6 +8,10 @@ __pycache__/
 .env
 .env.*
 
+# Snowflake CLI project definition: holds the S3 bucket and AWS account ID.
+# Copy snowflake.yml.example to snowflake.yml and fill it in locally.
+snowflake.yml
+
 # macOS
 .DS_Store
 
