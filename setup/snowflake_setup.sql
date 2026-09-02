@@ -105,10 +105,25 @@ USE SCHEMA IDENTIFIER($data_schema_fqn);
 -- ===========================================================================
 -- FILE FORMAT (read raw YAML as a single value)
 -- ===========================================================================
+-- Created in every schema that needs it. The import notebooks and their stored
+-- procedures take a single schema argument and qualify the file format with it, so each
+-- flow needs its own copy rather than reaching into the data schema.
 CREATE FILE FORMAT IF NOT EXISTS RAW_TEXT_FMT
   TYPE = 'CSV'
   FIELD_DELIMITER = NONE
   RECORD_DELIMITER = NONE
+  ESCAPE_UNENCLOSED_FIELD = NONE;
+
+CREATE FILE FORMAT IF NOT EXISTS DEMOS.DEMO_SEMANTIC_INTEROP.RAW_TEXT_FMT
+  TYPE = 'CSV' FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+  ESCAPE_UNENCLOSED_FIELD = NONE;
+
+CREATE FILE FORMAT IF NOT EXISTS DEMOS.LIVE_SEMANTIC_INTEROP.RAW_TEXT_FMT
+  TYPE = 'CSV' FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+  ESCAPE_UNENCLOSED_FIELD = NONE;
+
+CREATE FILE FORMAT IF NOT EXISTS DEMOS.SNOWFLAKE_MANAGED_SEMANTIC_INTEROP.RAW_TEXT_FMT
+  TYPE = 'CSV' FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
   ESCAPE_UNENCLOSED_FIELD = NONE;
 
 -- ===========================================================================
