@@ -70,12 +70,21 @@ def snowflake_to_converter(ossie_yaml, drop_fact_fields=True):
                     blob = json.loads(ext.get("data") or "{}")
                     for m in blob.get("metrics", []) or []:
                         expr = qual.sub("", m["expr"])  # SUM(orders.order_amount) -> SUM(order_amount)
-                        hoisted.append({
+                        metric = {
                             "name": m["name"],
                             "expression": {
                                 "dialects": [{"dialect": ANSI_DIALECT, "expression": expr}]
                             },
-                        })
+                        }
+                        # Carry the business metadata across, not just the maths. Snowflake
+                        # keeps synonyms in this vendor blob; the Apache converter reads them
+                        # from object-form ai_context and writes them to the Metric View's
+                        # `synonyms` field, where a Databricks user can see and edit them.
+                        if m.get("description"):
+                            metric["description"] = m["description"]
+                        if m.get("synonyms"):
+                            metric["ai_context"] = {"synonyms": list(m["synonyms"])}
+                        hoisted.append(metric)
                 else:
                     kept_ext.append(ext)
             if kept_ext:
@@ -83,12 +92,20 @@ def snowflake_to_converter(ossie_yaml, drop_fact_fields=True):
             else:
                 ds.pop("custom_extensions", None)
 
-            # Fields: relabel dialects, strip field-level SNOWFLAKE extensions, and
+            # Fields: relabel dialects, lift synonyms out of the SNOWFLAKE extension, and
             # optionally drop facts (kept only if they carry a `dimension` marker).
             new_fields = []
             for f in ds.get("fields", []) or []:
                 _relabel_dialects(f.get("expression"), SNOWFLAKE_DIALECT, ANSI_DIALECT)
-                f.pop("custom_extensions", None)
+                for ext in f.pop("custom_extensions", []) or []:
+                    if ext.get("vendor_name") != SNOWFLAKE_DIALECT:
+                        continue
+                    try:
+                        syn = (json.loads(ext.get("data") or "{}") or {}).get("synonyms")
+                    except (ValueError, TypeError):
+                        continue
+                    if syn:
+                        f["ai_context"] = {"synonyms": list(syn)}
                 if drop_fact_fields and "dimension" not in f:
                     continue
                 new_fields.append(f)
@@ -176,14 +193,14 @@ def converter_to_snowflake(ossie_yaml, dialect=SNOWFLAKE_DIALECT, model_name=Non
       `dimension` marker => facts) so the metric expressions resolve
     - marks every field on a non-fact (joined) dataset with `dimension: {}` so Snowflake
       classifies region/customer_name as dimensions, not facts
-    - strips object-form `ai_context`, which Snowflake's importer rejects (see
+    - translates synonyms into the SNOWFLAKE vendor extension that Snowflake actually
+      reads, and strips any object-form `ai_context` left over (see
       _drop_object_ai_context)
     - optionally renames the model (the new semantic view name) without touching the
       fact dataset name
     """
     root = yaml.safe_load(ossie_yaml)
     root["version"] = SNOWFLAKE_OSSIE_VERSION
-    _drop_object_ai_context(root)
     for model in root.get("semantic_model", []) or []:
         datasets = model.get("datasets", []) or []
 
@@ -270,9 +287,61 @@ def converter_to_snowflake(ossie_yaml, dialect=SNOWFLAKE_DIALECT, model_name=Non
                         "expression": {"dialects": [{"dialect": dialect, "expression": c}]},
                     })
 
+        # Synonyms: preserved in the file, but Snowflake does not ingest them.
+        #
+        # Verified against SYSTEM$CREATE_SEMANTIC_VIEW_FROM_OSSIE_YAML on 2026-08-25, with a
+        # DDL-created view as a control:
+        #
+        #   WITH SYNONYMS in DDL          -> SHOW SEMANTIC DIMENSIONS shows ["area",...]
+        #   field custom_extensions       -> echoed back on export, synonyms column EMPTY
+        #   top-level metric `synonyms:`  -> dropped
+        #   dataset blob {"metrics":[..]} -> echoed back, but NO metric is created at all
+        #
+        # So Snowflake's exporter writes synonyms into a vendor extension that its own
+        # importer ignores. Nothing this shim can do will land them on the view today.
+        #
+        # They are still written into the extension, because the Ossie file is the shared
+        # artifact: the synonyms stay visible to any other consumer, they survive a
+        # Databricks round trip, and they will apply if Snowflake starts reading them.
+        # What must NOT be done is move the metrics into the dataset blob to carry their
+        # synonyms: that form is opaque to the importer and the metrics vanish entirely.
+        for ds in datasets:
+            for f in ds.get("fields", []) or []:
+                syn = _pop_synonyms(f)
+                if syn:
+                    f.setdefault("custom_extensions", []).append({
+                        "vendor_name": SNOWFLAKE_DIALECT,
+                        "data": json.dumps({"synonyms": list(syn)}),
+                    })
+
+        for m in model.get("metrics", []) or []:
+            syn = _pop_synonyms(m)
+            if syn:
+                m.setdefault("custom_extensions", []).append({
+                    "vendor_name": SNOWFLAKE_DIALECT,
+                    "data": json.dumps({"synonyms": list(syn)}),
+                })
+
         if model_name:
             model["name"] = model_name
+
+    # Anything still carrying object-form ai_context (model level, dataset level, a
+    # relationship) would fail the import, and by this point its synonyms have already been
+    # translated where we know how to place them. Runs last, deliberately: running it first
+    # would delete the synonyms before they were moved.
+    _drop_object_ai_context(root)
     return yaml.safe_dump(root, sort_keys=False)
+
+
+def _pop_synonyms(obj):
+    """Take synonyms off an object, from either object-form ai_context or a bare key."""
+    ctx = obj.get("ai_context")
+    if isinstance(ctx, dict):
+        syn = ctx.get("synonyms")
+        del obj["ai_context"]
+        if syn:
+            return list(syn)
+    return list(obj.pop("synonyms", None) or [])
 
 
 # Prefix each bare column with the fact table; SQL function names (followed by "(")
