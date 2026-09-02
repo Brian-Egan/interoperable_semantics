@@ -31,11 +31,13 @@ export S3_BUCKET="snowflake-ossie-interop" # Pick a globally unique name
 
 # Snowflake
 export SF_DATABASE="DEMOS"
-export SF_SCHEMA="EXT_SEMANTIC_INTEROP"
+export SF_DATA_SCHEMA="EXT_SEMANTIC_INTEROP"   # Iceberg tables, shared
+export SF_SCHEMA="DEMO_SEMANTIC_INTEROP"       # one per flow: DEMO_, LIVE_, SNOWFLAKE_MANAGED_
 
 # Databricks
 export DBX_CATALOG="demos"
-export DBX_SCHEMA="ext_semantic_interop"
+export DBX_DATA_SCHEMA="ext_semantic_interop"  # Iceberg tables, shared
+export DBX_SCHEMA="demo_semantic_interop"      # one per flow
 ```
 
 ## Step 2: Create the S3 Bucket
@@ -101,8 +103,18 @@ aws iam attach-role-policy \
 Run `setup/snowflake_setup.sql` in your Snowflake account. Before running, replace
 the placeholder values at the top of the script:
 
-- `<YOUR_S3_BUCKET>` -- your S3 bucket name
-- `<YOUR_AWS_ACCOUNT_ID>` -- your 12-digit AWS account ID
+Values come from a gitignored `snowflake.yml`, not from editing the SQL:
+
+```bash
+cp snowflake.yml.example snowflake.yml   # then fill in s3_bucket and aws_account_id
+snow sql -c <your-connection> -f setup/snowflake_setup.sql
+```
+
+The script reads them as `<% ctx.env.s3_bucket %>` and `<% ctx.env.aws_account_id %>`,
+substituted client-side, so nothing sensitive reaches the command line or shell history.
+Add `--silent` if you are running it on a shared screen: the CLI echoes the rendered SQL.
+
+No AWS access key or secret is involved anywhere. Authentication is IAM role trust.
 
 The script will output two values you need:
 - `STORAGE_AWS_IAM_USER_ARN` -- Snowflake's IAM user
@@ -230,7 +242,7 @@ databricks schemas create --json '{
 
 ## Step 8: Verify
 
-1. In Snowflake, run: `LIST @DEMOS.EXT_SEMANTIC_INTEROP.OSSIE_S3_STAGE;`
+1. In Snowflake, run: `LIST @DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE;`
 2. In AWS: `aws s3 ls s3://$S3_BUCKET/iceberg/ --recursive | head`
 3. In Databricks: `dbutils.fs.ls("s3://<bucket>/ossie/")`
 

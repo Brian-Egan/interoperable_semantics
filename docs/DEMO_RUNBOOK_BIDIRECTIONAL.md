@@ -33,7 +33,7 @@ re-implementing anything.
 | Snowflake reset | run `00_snowflake_setup.sql` | EAST 750/5/12, WEST 700/5/11, `SALES_SV` with 2 metrics |
 | Databricks reset | run `00_databricks_setup.ipynb` | same numbers, `sales_metric_view` **not** listed |
 | Converter installed | notebook 02, the `%pip` cell and `restartPython` | completes |
-| Task suspended | `SHOW TASKS IN SCHEMA DEMOS.EXT_SEMANTIC_INTEROP` | `SYNC_OSSIE_TASK` absent or suspended |
+| Task suspended | `SHOW TASKS IN SCHEMA DEMOS.LIVE_SEMANTIC_INTEROP` | `SYNC_OSSIE_TASK` absent or suspended |
 | Job paused | Databricks Workflows | paused |
 
 Run the `%pip` install before anyone is watching. On serverless it takes 45 to 75 seconds,
@@ -219,7 +219,7 @@ silently never fires.
 | Sync reports `CONFLICT` unexpectedly | stale state from a previous run | re-run both setup scripts |
 | Every run reports `IMPORT` or `EXPORT`, never `NO_CHANGE` | fingerprint not converging | fall back to slides, then run the offline tests |
 | Databricks cell hangs on `%pip` | cold serverless compute | warm it beforehand, or use a cluster library |
-| Snowflake sees a stale file | directory metadata not refreshed | `ALTER STAGE OSSIE_S3_STAGE REFRESH` |
+| Snowflake sees a stale file | directory metadata not refreshed | `ALTER STAGE LIVE_OSSIE_STAGE REFRESH` |
 | `EXECUTE TASK` fails on privileges | session role reset | `USE ROLE ACCOUNTADMIN` |
 
 Have a screenshot of the final Databricks four-measure result. If the live sync fails, show

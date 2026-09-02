@@ -112,7 +112,7 @@ orders.total_quantity AS SUM(orders.order_qty)
 Then trigger the export:
 
 ```sql
-EXECUTE TASK DEMOS.EXT_SEMANTIC_INTEROP.EXPORT_OSSIE_TASK;
+EXECUTE TASK DEMOS.SNOWFLAKE_MANAGED_SEMANTIC_INTEROP.EXPORT_OSSIE_TASK;
 ```
 
 Expected: `EXPORT - local model changed, publishing to Ossie`.

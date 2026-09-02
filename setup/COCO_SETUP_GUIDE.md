@@ -96,9 +96,15 @@ Snowflake object names used throughout, which the demo scripts expect exactly:
 
 ```
 database          DEMOS
-schema            EXT_SEMANTIC_INTEROP
+data schema       EXT_SEMANTIC_INTEROP        Iceberg tables, shared by all flows
+flow schemas      DEMO_SEMANTIC_INTEROP, LIVE_SEMANTIC_INTEROP,
+                  SNOWFLAKE_MANAGED_SEMANTIC_INTEROP
 storage integ.    OSSIE_S3_INT
-external stage    OSSIE_S3_STAGE       -> s3://<BUCKET>/ossie/
+external stages   DEMO_OSSIE_STAGE               -> s3://<BUCKET>/ossie/demo/
+                  LIVE_OSSIE_STAGE               -> s3://<BUCKET>/ossie/live/
+                  SNOWFLAKE_MANAGED_OSSIE_STAGE  -> s3://<BUCKET>/ossie/snowflake_managed/
+                  All three share one storage integration. A stage inherits the
+                  integration's role and external ID, so extra stages need no AWS change.
 external volume   OSSIE_ICEBERG_VOL    -> s3://<BUCKET>/iceberg/
 file format       RAW_TEXT_FMT
 iceberg tables    CUSTOMERS, ORDERS
@@ -106,7 +112,8 @@ semantic view     SALES_SV
 warehouse         any; the notebooks default to SI_DEMO_WH
 ```
 
-Databricks: catalog `demos`, schema `ext_semantic_interop`, external location
+Databricks: catalog `demos`, schemas `ext_semantic_interop` (tables, shared) plus one
+per flow (`demo_`, `live_`, `snowflake_managed_semantic_interop`), external location
 `ossie-interop-s3`, storage credential `ossie-s3-credential`, metric view
 `sales_metric_view`.
 
@@ -188,10 +195,34 @@ done
 Substitute real literals into this SQL. Do not use session variables here; see constraint
 1 above.
 
+There is a shortcut worth knowing about, and a reason not to lead with it. The repository
+ships `setup/snowflake_setup.sql`, which does everything in this section and reads the
+bucket and account ID from a gitignored `snowflake.yml` via `<% ctx.env.* %>` templating:
+
+```bash
+cp snowflake.yml.example snowflake.yml    # fill in s3_bucket and aws_account_id
+snow sql -c <connection> -f setup/snowflake_setup.sql
+```
+
+Use it only once the AWS role and trust policy already exist. On a fresh account the
+integration and volume have to be created first so their external IDs can be read and
+allowed in AWS, which means the run has to be split anyway. Work through the steps below
+on a first-time setup, then use the script for repeat runs and verification: it is
+idempotent, and re-running it changes nothing.
+
 ```sql
 USE ROLE ACCOUNTADMIN;
 CREATE DATABASE IF NOT EXISTS DEMOS;
+
+-- Shared data schema: Iceberg tables and the external volume.
 CREATE SCHEMA IF NOT EXISTS DEMOS.EXT_SEMANTIC_INTEROP;
+
+-- One schema per demo flow, each holding a semantic view and its own stage. All three can
+-- exist at once, so a live sync cannot disturb a manual demo.
+CREATE SCHEMA IF NOT EXISTS DEMOS.DEMO_SEMANTIC_INTEROP;
+CREATE SCHEMA IF NOT EXISTS DEMOS.LIVE_SEMANTIC_INTEROP;
+CREATE SCHEMA IF NOT EXISTS DEMOS.SNOWFLAKE_MANAGED_SEMANTIC_INTEROP;
+
 USE SCHEMA DEMOS.EXT_SEMANTIC_INTEROP;
 
 CREATE FILE FORMAT IF NOT EXISTS RAW_TEXT_FMT
@@ -247,21 +278,79 @@ IAM propagation takes up to a minute. Then verify, and do not continue until thi
 SELECT SYSTEM$VALIDATE_STORAGE_INTEGRATION('OSSIE_S3_INT', 's3://<BUCKET>/ossie/', 'test.txt', 'write');
 ```
 
-Create the stage only after validation succeeds:
+Create the stages only after validation succeeds. One per flow, each scoped to its own
+subfolder, all sharing the single integration:
 
 ```sql
-CREATE STAGE IF NOT EXISTS OSSIE_S3_STAGE
-  URL = 's3://<BUCKET>/ossie/'
+CREATE STAGE IF NOT EXISTS DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE
+  URL = 's3://<BUCKET>/ossie/demo/'
   STORAGE_INTEGRATION = OSSIE_S3_INT
   DIRECTORY = (ENABLE = TRUE)
   FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
                  ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE);
 
-LIST @OSSIE_S3_STAGE;   -- empty result is success; an error is not
+CREATE STAGE IF NOT EXISTS DEMOS.LIVE_SEMANTIC_INTEROP.LIVE_OSSIE_STAGE
+  URL = 's3://<BUCKET>/ossie/live/'
+  STORAGE_INTEGRATION = OSSIE_S3_INT
+  DIRECTORY = (ENABLE = TRUE)
+  FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+                 ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE);
+
+CREATE STAGE IF NOT EXISTS DEMOS.SNOWFLAKE_MANAGED_SEMANTIC_INTEROP.SNOWFLAKE_MANAGED_OSSIE_STAGE
+  URL = 's3://<BUCKET>/ossie/snowflake_managed/'
+  STORAGE_INTEGRATION = OSSIE_S3_INT
+  DIRECTORY = (ENABLE = TRUE)
+  FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+                 ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE);
+```
+
+Three things about this that are not obvious:
+
+- **No extra AWS work.** A stage does not hold its own trust relationship; it inherits the
+  integration's role and external ID. Confirm with `DESC STAGE`, which reports the same
+  `AWS_EXTERNAL_ID` as `DESC INTEGRATION`.
+- **Nest under `ossie/`.** The integration allows the whole bucket, but if the IAM role
+  policy is scoped to `ossie/*`, a new top-level prefix fails with an opaque permissions
+  error. Nesting is safe under either policy.
+- **`LIST` is recursive.** This is why each flow gets its own prefix rather than sharing
+  one stage: a stage at `ossie/` lists every flow's files at once.
+
+Also create the file format in each flow schema. The import procedures qualify the file
+format with their single schema argument, so they cannot reach into the data schema:
+
+```sql
+CREATE FILE FORMAT IF NOT EXISTS DEMOS.DEMO_SEMANTIC_INTEROP.RAW_TEXT_FMT
+  TYPE = 'CSV' FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+  ESCAPE_UNENCLOSED_FIELD = NONE;
+-- repeat for LIVE_SEMANTIC_INTEROP and SNOWFLAKE_MANAGED_SEMANTIC_INTEROP
+```
+
+Verify each stage can reach S3. An empty result is success; an error is not:
+
+```sql
+LIST @DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE;
+LIST @DEMOS.LIVE_SEMANTIC_INTEROP.LIVE_OSSIE_STAGE;
+LIST @DEMOS.SNOWFLAKE_MANAGED_SEMANTIC_INTEROP.SNOWFLAKE_MANAGED_OSSIE_STAGE;
+```
+
+An empty listing cannot distinguish "reachable and empty" from "prefix does not exist", so
+prove write access on at least one of them:
+
+```sql
+COPY INTO @DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE/_probe.txt
+FROM (SELECT 'write access confirmed')
+FILE_FORMAT = (TYPE = CSV FIELD_DELIMITER = NONE RECORD_DELIMITER = NONE
+               ESCAPE_UNENCLOSED_FIELD = NONE COMPRESSION = NONE)
+SINGLE = TRUE OVERWRITE = TRUE;
+
+LIST @DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE;    -- expect _probe.txt
+REMOVE @DEMOS.DEMO_SEMANTIC_INTEROP.DEMO_OSSIE_STAGE/_probe.txt;
 ```
 
 `DIRECTORY = (ENABLE = TRUE)` is required. The demo reads file timestamps from the
-directory table.
+directory table. Note it does not auto-refresh: after deleting or adding a file, run
+`ALTER STAGE <name> REFRESH`, or `DIRECTORY()` will keep reporting the old contents.
+`LIST` reads live and is unaffected.
 
 ---
 
@@ -384,7 +473,7 @@ Everything from here is already scripted and needs no configuration.
 | Snowflake data | region aggregate on `ORDERS`/`CUSTOMERS` | EAST 750/5/12, WEST 700/5/11 |
 | Semantic view | `SELECT * FROM SEMANTIC_VIEW(SALES_SV ...)` | EAST 750/5, WEST 700/5 |
 | Stage writable | `SYSTEM$VALIDATE_STORAGE_INTEGRATION(... 'write')` | passes |
-| Directory table | `SELECT * FROM DIRECTORY(@OSSIE_S3_STAGE)` | runs, may be empty |
+| Directory table | `SELECT * FROM DIRECTORY(@DEMO_OSSIE_STAGE)` | runs, may be empty |
 | Databricks data | same aggregate in `demos.ext_semantic_interop` | identical numbers |
 | Databricks S3 read | `LIST 's3://<BUCKET>/iceberg/'` | both table directories |
 | Offline gate | the two test scripts | all checks pass |

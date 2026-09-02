@@ -81,7 +81,7 @@ discover that nothing changed, which `tests/test_no_loop.py` shows is the normal
 shared file's directory table, so it fires when the Ossie file actually lands:
 
 ```sql
-CREATE STREAM ossie_model_stream ON STAGE OSSIE_S3_STAGE;
+CREATE STREAM ossie_model_stream ON STAGE LIVE_OSSIE_STAGE;
 
 CREATE TASK sync_ossie
   WAREHOUSE = ...
